@@ -20,7 +20,7 @@
         <header class="text-center space-y-2">
             <h1 class="text-4xl font-extrabold tracking-tight text-indigo-500">Perfect Auto-Framer</h1>
             <p class="text-slate-400 max-w-2xl mx-auto">
-                Upload a border frame or pick a solid color. Then add your content image — it will be framed automatically.
+                Upload a border frame (or pick a solid color), then paste/upload your content image — it will be framed automatically.
             </p>
         </header>
 
@@ -47,7 +47,7 @@
                         </div>
 
                         <button id="clearBorderBtn" class="text-xs text-slate-400 hover:text-slate-200 transition-colors self-start">
-                            Clear border / reset to color
+                            Clear border / use color
                         </button>
 
                         <p id="borderStatus" class="hidden text-xs text-green-400 font-medium text-center">✓ Custom border loaded</p>
@@ -63,7 +63,7 @@
                     <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-700 rounded-xl cursor-pointer bg-slate-800/50 hover:bg-slate-800 hover:border-pink-500 transition-all">
                         <div class="flex flex-col items-center justify-center pt-5 pb-6">
                             <i data-lucide="upload" class="w-8 h-8 text-pink-400 mb-2"></i>
-                            <p class="text-sm text-pink-400 font-medium">Click or Paste (Ctrl+V)</p>
+                            <p class="text-sm text-pink-400 font-medium">Click to upload or Ctrl+V to paste</p>
                         </div>
                         <input type="file" id="contentInput" accept="image/*" class="hidden" />
                     </label>
@@ -77,7 +77,7 @@
                     </h2>
                     <p class="text-xs text-slate-500 mb-4 flex items-start gap-1">
                         <i data-lucide="info" class="w-3 h-3 flex-shrink-0 mt-0.5"></i>
-                        Only applies when using an image border
+                        Only used when you have an image border loaded
                     </p>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="space-y-1">
@@ -117,7 +117,7 @@
                 <div class="flex-1 p-6 flex items-center justify-center bg-black/40 min-h-[400px]">
                     <div id="placeholder" class="text-center text-slate-600 flex flex-col items-center">
                         <i data-lucide="image" class="w-16 h-16 mb-4 opacity-20"></i>
-                        <p>Add a content image to see the result</p>
+                        <p>Paste or upload a content image to see the framed result</p>
                     </div>
                     <div id="canvasContainer" class="hidden max-w-full overflow-auto rounded shadow-2xl relative checkerboard">
                         <canvas id="canvas" class="block max-w-full h-auto"></canvas>
@@ -133,11 +133,11 @@
         // State
         let borderImgObj = null;
         let contentImgObj = null;
-        let borderColor = '#6366f1'; // default
+        let borderColor = '#6366f1';
         let useColorFallback = true;
         let slice = { top: 24, right: 12, bottom: 12, left: 12 };
 
-        // DOM
+        // DOM elements
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const placeholder = document.getElementById('placeholder');
@@ -150,6 +150,7 @@
         const clearBorderBtn = document.getElementById('clearBorderBtn');
         const borderStatus = document.getElementById('borderStatus');
         const colorStatus = document.getElementById('colorStatus');
+        const contentStatus = document.getElementById('contentStatus');
 
         const contentInput = document.getElementById('contentInput');
         const sliceInputs = {
@@ -159,7 +160,6 @@
             right: document.getElementById('sliceRight')
         };
 
-        // Update fallback mode UI
         function updateBorderUI() {
             if (borderImgObj) {
                 borderStatus.classList.remove('hidden');
@@ -173,7 +173,6 @@
             drawCanvas();
         }
 
-        // File load
         function loadImage(file, callback) {
             if (!file) return;
             const reader = new FileReader();
@@ -185,6 +184,7 @@
             reader.readAsDataURL(file);
         }
 
+        // Border: only via file input
         borderInput.addEventListener('change', (e) => {
             loadImage(e.target.files[0], (img) => {
                 borderImgObj = img;
@@ -192,53 +192,54 @@
             });
         });
 
-        // Paste → always content
+        // Content: file input + paste
+        contentInput.addEventListener('change', (e) => {
+            loadImage(e.target.files[0], (img) => {
+                contentImgObj = img;
+                contentStatus.classList.remove('hidden');
+                drawCanvas();
+            });
+        });
+
+        // Paste → ONLY content image (never border)
         window.addEventListener('paste', (e) => {
             const items = e.clipboardData?.items;
             if (!items) return;
+
             for (const item of items) {
                 if (item.type.startsWith('image')) {
                     const blob = item.getAsFile();
                     loadImage(blob, (img) => {
                         contentImgObj = img;
-                        document.getElementById('contentStatus').classList.remove('hidden');
+                        contentStatus.classList.remove('hidden');
                         drawCanvas();
                     });
+                    e.preventDefault(); // prevent browser default paste behavior
                     break;
                 }
             }
         });
 
-        contentInput.addEventListener('change', (e) => {
-            loadImage(e.target.files[0], (img) => {
-                contentImgObj = img;
-                document.getElementById('contentStatus').classList.remove('hidden');
-                drawCanvas();
-            });
-        });
-
-        // Color picker
         borderColorInput.addEventListener('input', (e) => {
             borderColor = e.target.value;
             if (!borderImgObj) drawCanvas();
         });
 
-        // Clear border
         clearBorderBtn.addEventListener('click', () => {
             borderImgObj = null;
             borderInput.value = '';
             updateBorderUI();
         });
 
-        // Slice changes
+        // Slice changes → only affect image border mode
         Object.keys(sliceInputs).forEach(key => {
             sliceInputs[key].addEventListener('input', (e) => {
                 slice[key] = parseInt(e.target.value) || 0;
                 if (borderImgObj) drawCanvas();
+                else drawCanvas(); // redraw even in color mode since thickness is shared
             });
         });
 
-        // Core drawing logic
         function drawCanvas() {
             if (!contentImgObj) {
                 placeholder.classList.remove('hidden');
@@ -255,7 +256,6 @@
 
             const Wc = contentImgObj.width;
             const Hc = contentImgObj.height;
-
             let Wf, Hf;
 
             if (useColorFallback || !borderImgObj) {
@@ -268,15 +268,10 @@
                 canvas.height = Hf;
                 ctx.clearRect(0, 0, Wf, Hf);
 
-                // Fill border color
                 ctx.fillStyle = borderColor;
                 ctx.fillRect(0, 0, Wf, Hf);
-
-                // Cut out center
                 ctx.clearRect(l, t, Wc, Hc);
-
-                // Draw content
-                ctx.drawImage(contentImgObj, l, t, Wc, Hc);
+                ctx.drawImage(contentImgObj, l, t);
             } else {
                 // 9-slice image border
                 const Wb = borderImgObj.width;
@@ -298,23 +293,25 @@
                 ctx.clearRect(0, 0, Wf, Hf);
 
                 // Corners
-                if (Sl > 0 && St > 0) ctx.drawImage(borderImgObj, 0, 0, Sl, St, 0, 0, Sl, St);
-                if (Sr > 0 && St > 0) ctx.drawImage(borderImgObj, Wb - Sr, 0, Sr, St, Wf - Sr, 0, Sr, St);
-                if (Sl > 0 && Sb > 0) ctx.drawImage(borderImgObj, 0, Hb - Sb, Sl, Sb, 0, Hf - Sb, Sl, Sb);
-                if (Sr > 0 && Sb > 0) ctx.drawImage(borderImgObj, Wb - Sr, Hb - Sb, Sr, Sb, Wf - Sr, Hf - Sb, Sr, Sb);
+                if (Sl && St) ctx.drawImage(borderImgObj, 0, 0, Sl, St, 0, 0, Sl, St);
+                if (Sr && St) ctx.drawImage(borderImgObj, Wb - Sr, 0, Sr, St, Wf - Sr, 0, Sr, St);
+                if (Sl && Sb) ctx.drawImage(borderImgObj, 0, Hb - Sb, Sl, Sb, 0, Hf - Sb, Sl, Sb);
+                if (Sr && Sb) ctx.drawImage(borderImgObj, Wb - Sr, Hb - Sb, Sr, Sb, Wf - Sr, Hf - Sb, Sr, Sb);
 
-                // Sides
-                if (midW_src > 0 && St > 0) ctx.drawImage(borderImgObj, Sl, 0, midW_src, St, Sl, 0, Wc, St);
-                if (midW_src > 0 && Sb > 0) ctx.drawImage(borderImgObj, Sl, Hb - Sb, midW_src, Sb, Sl, Hf - Sb, Wc, Sb);
-                if (Sl > 0 && midH_src > 0) ctx.drawImage(borderImgObj, 0, St, Sl, midH_src, 0, St, Sl, Hc);
-                if (Sr > 0 && midH_src > 0) ctx.drawImage(borderImgObj, Wb - Sr, St, Sr, midH_src, Wf - Sr, St, Sr, Hc);
+                // Horizontal sides
+                if (midW_src && St) ctx.drawImage(borderImgObj, Sl, 0, midW_src, St, Sl, 0, Wc, St);
+                if (midW_src && Sb) ctx.drawImage(borderImgObj, Sl, Hb - Sb, midW_src, Sb, Sl, Hf - Sb, Wc, Sb);
 
-                // Center content
-                ctx.drawImage(contentImgObj, Sl, St, Wc, Hc);
+                // Vertical sides
+                if (Sl && midH_src) ctx.drawImage(borderImgObj, 0, St, Sl, midH_src, 0, St, Sl, Hc);
+                if (Sr && midH_src) ctx.drawImage(borderImgObj, Wb - Sr, St, Sr, midH_src, Wf - Sr, St, Sr, Hc);
+
+                // Content
+                ctx.drawImage(contentImgObj, Sl, St);
             }
         }
 
-        // Buttons
+        // Download
         downloadBtn.addEventListener('click', () => {
             const url = canvas.toDataURL('image/png');
             const a = document.createElement('a');
@@ -323,6 +320,7 @@
             a.click();
         });
 
+        // Copy to clipboard
         copyBtn.addEventListener('click', () => {
             canvas.toBlob(blob => {
                 if (!blob) return;
@@ -338,12 +336,12 @@
                         }, 1800);
                     });
                 } catch (err) {
-                    console.error('Copy failed', err);
+                    console.error('Clipboard copy failed:', err);
                 }
             });
         });
 
-        // Initial UI state
+        // Initial state
         updateBorderUI();
     </script>
 </body>
